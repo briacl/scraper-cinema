@@ -1,0 +1,1 @@
+HTTPSConnectionPool(host='www.cinemas', port=443): Max retries exceeded with url: /nos.pt/filmes (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x10b3d7380>: Failed to resolve 'www.cinemas' ([Errno 8] nodename nor servname provided, or not known)"))

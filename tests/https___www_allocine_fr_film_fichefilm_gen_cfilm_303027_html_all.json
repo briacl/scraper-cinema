@@ -1,0 +1,84 @@
+{
+  "url": "https://www.allocine.fr/film/fichefilm_gen_cfilm=303027.html",
+  "fetched_at": "2025-11-29T14:38:30.759372Z",
+  "count": 5,
+  "films": [
+    {
+      "title": null,
+      "link": null,
+      "poster": "https://fr.web.img2.acsta.net/c_310_420/img/d9/8c/d98cf2f82174e030b461d6a7103c58ec.jpg",
+      "release_date": "22 octobre 2025",
+      "duration": "2h 19min",
+      "genres": [
+        "Aventure",
+        "Comédie",
+        "Historique"
+      ],
+      "director": null,
+      "actors": [
+        "Alexandre Astier",
+        "Anne Girouard",
+        "Jean-Christophe Hembert"
+      ],
+      "synopsis": null,
+      "sessions": null,
+      "ratings": {
+        "Presse": "2,3",
+        "Spectateurs": "3,1",
+        "Mes amis": "--"
+      }
+    },
+    {
+      "title": "Rose & noir",
+      "link": "https://www.allocine.fr/film/fichefilm_gen_cfilm=131336.html",
+      "poster": "https://fr.web.img6.acsta.net/c_280_373/medias/nmedia/18/72/30/15/19166522.jpg",
+      "release_date": null,
+      "duration": null,
+      "genres": [],
+      "director": null,
+      "actors": [],
+      "synopsis": null,
+      "sessions": null,
+      "ratings": {}
+    },
+    {
+      "title": "Blanche",
+      "link": "https://www.allocine.fr/film/fichefilm_gen_cfilm=29222.html",
+      "poster": "https://fr.web.img3.acsta.net/c_280_373/medias/nmedia/00/02/50/63/affiche2.jpg",
+      "release_date": null,
+      "duration": null,
+      "genres": [],
+      "director": null,
+      "actors": [],
+      "synopsis": null,
+      "sessions": null,
+      "ratings": {}
+    },
+    {
+      "title": "Le Chevalier black",
+      "link": "https://www.allocine.fr/film/fichefilm_gen_cfilm=28652.html",
+      "poster": "https://fr.web.img2.acsta.net/c_280_373/medias/nmedia/00/02/47/79/affiche.jpg",
+      "release_date": null,
+      "duration": null,
+      "genres": [],
+      "director": null,
+      "actors": [],
+      "synopsis": null,
+      "sessions": null,
+      "ratings": {}
+    },
+    {
+      "title": "Au fil de l'épée",
+      "link": "https://www.allocine.fr/film/fichefilm_gen_cfilm=36149.html",
+      "poster": "https://fr.web.img6.acsta.net/c_280_373/medias/nmedia/18/78/05/95/19444879.jpg",
+      "release_date": null,
+      "duration": null,
+      "genres": [],
+      "director": null,
+      "actors": [],
+      "synopsis": null,
+      "sessions": null,
+      "ratings": {}
+    }
+  ]
+}

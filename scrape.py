@@ -21,12 +21,64 @@ import time
 # URL par défaut (peut être surchargée via la ligne de commande)
 DEFAULT_URL = "https://www.cinemas/nos.pt/filmes"
 
+# Dossier pour stocker les fichiers générés par les recherches
+DATA_DIR = Path("searching_film_data")
+
+
+def sanitize_for_filename(s: str) -> str:
+    if not s:
+        return "unknown"
+    # remplacer les caractères non alphanumériques par underscore
+    safe = re.sub(r"[^0-9A-Za-z\-]+", "_", s)
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    return safe
+
+
+def get_shwt_date_from_url(url: str) -> str | None:
+    m = re.search(r"shwt_date=(\d{4}-\d{2}-\d{2})", url)
+    return m.group(1) if m else None
+
+
+def make_run_dir() -> Path:
+    """Crée un sous-dossier horodaté sous DATA_DIR et le retourne."""
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    run = DATA_DIR / ts
+    run.mkdir(parents=True, exist_ok=True)
+    # écrire un fichier indiquant le dernier run (utile au viewer statique)
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        latest_file = DATA_DIR / 'latest_run.txt'
+        latest_file.write_text(ts, encoding='utf-8')
+    except Exception:
+        # Ne pas bloquer l'exécution si l'écriture échoue
+        pass
+    return run
+
 
 def make_output_path_from_url(url: str) -> Path:
-    """Crée un nom de fichier de sortie simple à partir de l'URL pour éviter d'écraser d'autres fichiers."""
-    # Remplace les caractères non alphanumériques par des underscore
-    safe = "".join(c if c.isalnum() else "_" for c in url)
-    return Path(f"{safe}.html")
+    """Crée un chemin lisible pour la sortie à partir de l'URL.
+
+    Les fichiers sont rangés dans `searching_film_data` et le nom retire le schéma
+    et transforme le chemin en un nom lisible. Exemple:
+      https://www.allocine.fr/seance/... -> searching_film_data/allocine_www_allocine_fr_seance_....html
+    """
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    parsed = urlparse(url)
+    host = parsed.netloc.replace('www.', '')
+    # concat path + fragment + query pour garder l'info utile
+    parts = parsed.path or ''
+    if parsed.fragment:
+        parts = parts + '_' + parsed.fragment
+    if parsed.query:
+        parts = parts + '_' + parsed.query
+    combined = f"{host}{parts}"
+    # remplace tout ce qui n'est pas alphanumérico/_/- par underscore
+    safe = re.sub(r"[^0-9A-Za-z_-]+", "_", combined)
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    # Prefixe indiquant le site pour plus de lisibilité
+    if 'allocine' in host:
+        safe = f"allocine_{safe}"
+    return DATA_DIR / (safe + '.html')
 
 
 OUTPUT = Path("filmes.html")
@@ -41,6 +93,8 @@ HEADERS = {
 def main():
     parser = argparse.ArgumentParser(description="Simple scraper: récupère une page HTML et la sauvegarde sur disque.")
     parser.add_argument("url", nargs="?", help="URL à scrapper (si omise, une saisie interactive sera proposée)")
+    parser.add_argument("--salle-name", dest="salle_name", help="Nom lisible de la salle (ex: 'Le Prévert de Harnes')")
+    parser.add_argument("--film", "-f", dest="film", help="Titre du film à filtrer sur la page du cinéma (optionnel)")
     args = parser.parse_args()
 
     # Si l'URL n'a pas été fournie en argument, demander à l'utilisateur
@@ -57,8 +111,8 @@ def main():
         if not url:
             url = DEFAULT_URL
 
-    output_path = make_output_path_from_url(url)
-    error_path = Path(f"{output_path.stem}_error.txt")
+    # créer un répertoire d'exécution horodaté
+    run_dir = make_run_dir()
 
     print(f"Requête vers: {url}")
     print(f"User-Agent: {HEADERS['User-Agent']}")
@@ -67,17 +121,57 @@ def main():
         resp.raise_for_status()
     except requests.exceptions.RequestException as exc:
         # Sauvegarde l'erreur sur le disque pour inspection
+        error_path = run_dir / "request_error.txt"
         error_path.write_text(str(exc), encoding="utf-8")
         print(f"La requête a échoué: {exc}")
         print(f"Détails de l'erreur écrits dans: {error_path.resolve()}")
         sys.exit(1)
 
-    # Écrire le HTML récupéré dans le dossier d'exécution
+    # Parser la page pour pouvoir extraire le nom lisible de la salle avant d'écrire
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # tenter d'extraire un nom de salle lisible depuis le HTML (fallback si fourni via CLI)
+    def extract_salle_name(soup_obj: BeautifulSoup) -> str | None:
+        # candidates: éléments courants (h1, .titlebar-title, breadcrumb items)
+        try:
+            h = soup_obj.find("h1")
+            if h and h.get_text(strip=True):
+                txt = h.get_text(strip=True)
+                if len(txt) > 3:
+                    return txt
+        except Exception:
+            pass
+        try:
+            tb = soup_obj.find(class_=lambda c: c and 'titlebar-title' in c)
+            if tb and tb.get_text(strip=True):
+                return tb.get_text(strip=True)
+        except Exception:
+            pass
+        try:
+            # rechercher un élément contenant 'cin' ou 'salle'
+            candidate = soup_obj.find(lambda tag: tag.name in ("div", "span") and tag.get_text(strip=True) and ("cin" in tag.get_text(strip=True).lower() or "salle" in tag.get_text(strip=True).lower()))
+            if candidate:
+                return candidate.get_text(strip=True)
+        except Exception:
+            pass
+        return None
+
+    # déterminer le nom de la salle
+    salle_name = args.salle_name or extract_salle_name(soup) or urlparse(url).path.split('=')[-1]
+    safe_salle = sanitize_for_filename(salle_name)
+    # date pour le nom de fichier (priorité: fragment #shwt_date=; fallback: date du jour)
+    seance_date = get_shwt_date_from_url(url) or datetime.now().date().isoformat()
+
+    # noms de fichiers selon votre convention
+    html_filename = f"allocine_{safe_salle}_all_seances_{seance_date}.html"
+    page_json_filename = f"allocine_{safe_salle}_all_seances_{seance_date}.json"
+
+    output_path = run_dir / html_filename
+    error_path = run_dir / f"{safe_salle}_error.txt"
+
+    # Écrire le HTML récupéré dans le dossier horodaté
     output_path.write_text(resp.text, encoding="utf-8")
     print(f"HTML sauvegardé dans: {output_path.resolve()} (taille: {len(resp.text)} octets)")
-
-    # Parser la page et extraire des éléments utiles
-    soup = BeautifulSoup(resp.text, "html.parser")
 
     # Titre: prefere og:title, sinon <title>
     title = None
@@ -126,9 +220,154 @@ def main():
         "html_file": str(output_path.name),
     }
 
-    output_json = output_path.with_suffix(".json")
+    output_json = run_dir / page_json_filename
     output_json.write_text(json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Données extraites sauvegardées dans: {output_json.resolve()}")
+    print(f"Données extraites (page-level) sauvegardées dans: {output_json.resolve()}")
+
+    # Si l'utilisateur a demandé l'extraction des séances pour un film précis
+    def normalize_text(s: str) -> str:
+        if not s:
+            return ""
+        return re.sub(r"\W+", " ", s, flags=re.UNICODE).strip().lower()
+
+    def parse_cinema_showtimes(soup: BeautifulSoup, film_title: str, page_url: str):
+        """Tente d'extraire les séances d'un film sur une page 'salle' d'AlloCiné.
+
+        Retourne un dict avec keys: found (bool), film, count, showtimes (list)
+        Chaque showtime est un dict {date, time, text}.
+        """
+        target = normalize_text(film_title)
+
+        # Rechercher des ancres qui semblent pointer vers la fiche film et dont le texte correspond
+        anchors = soup.find_all("a", href=True)
+        candidates = []
+        for a in anchors:
+            text = a.get_text(" ", strip=True) or ""
+            if target and target in normalize_text(text):
+                candidates.append(a)
+                continue
+            if a.has_attr("title") and target and target in normalize_text(a["title"]):
+                candidates.append(a)
+
+        # Si aucun ancres directes, tenter des anchors pointant vers des URLs /film/ ou fichefilm
+        if not candidates:
+            for a in anchors:
+                if re.search(r"/film(/|$)|fichefilm_gen_cfilm|film-", a["href"]):
+                    parent = a.find_parent()
+                    if parent and target and target in normalize_text(parent.get_text(" ", strip=True)):
+                        candidates.append(a)
+
+        if not candidates:
+            return {"found": False, "reason": "film not found on page", "film": film_title}
+
+        # On prend la première correspondance raisonnable
+        a = candidates[0]
+        # Remonter jusqu'à un container logique
+        container = a.find_parent()
+        for cls in ["showtimes-movie", "showtimes-movie-holder", "result-item", "entity-card", "tpl-seances-list"]:
+            c = a.find_parent(class_=lambda c: c and cls in c.lower())
+            if c:
+                container = c
+                break
+
+        # Récupérer les spans contenant les horaires
+        spans = container.find_all(lambda tag: tag.name in ("span", "a", "time") and (tag.has_attr("data-showtime-time") or (tag.get("class") and any("show" in cl or "hour" in cl for cl in (tag.get("class") or [])))))
+
+        # Si aucun span trouvé dans le container, chercher globalement à proximité du lien
+        if not spans:
+            # rechercher éléments proches: frères / suivants
+            siblings = []
+            parent = a.parent
+            for _ in range(4):
+                if not parent:
+                    break
+                siblings.extend(parent.find_all(lambda t: t.name in ("span", "time") and (t.has_attr("data-showtime-time") or "showtime" in (t.get("class") or []))))
+                parent = parent.parent
+            spans = siblings
+
+        showtimes = []
+        for s in spans:
+            # Préférer le texte visible (ce qui est affiché sur la page) plutôt que l'attribut data-showtime-time
+            time_text = s.get_text(" ", strip=True)
+            time_val = None
+            if time_text:
+                # Normaliser les formats courants : "20:30", "20h30", "20h"
+                m = re.search(r"(\d{1,2})[hH:](\d{2})", time_text)
+                if m:
+                    hh = int(m.group(1))
+                    mm = m.group(2)
+                    time_val = f"{hh:02d}:{mm}"
+                else:
+                    m2 = re.search(r"(\d{1,2})[hH]\b", time_text)
+                    if m2:
+                        hh = int(m2.group(1))
+                        time_val = f"{hh:02d}:00"
+                    else:
+                        # fallback: garder le texte brut si aucun format détecté
+                        time_val = time_text
+            else:
+                # si aucun texte visible, on peut tenter l'attribut data-showtime-time en fallback
+                time_val = s.get("data-showtime-time") or s.get_text(" ", strip=True)
+            date_val = None
+            # rechercher date dans l'élément ou ses ancêtres
+            el = s
+            while el and el != container:
+                if el.has_attr("data-showtime-date"):
+                    date_val = el["data-showtime-date"]
+                    break
+                el = el.parent
+            # fallback: extraire la date depuis le fragment de l'URL (ex: #shwt_date=2025-11-29)
+            if not date_val:
+                parsed = urlparse(page_url)
+                if parsed.fragment:
+                    m = re.search(r"shwt_date=(\d{4}-\d{2}-\d{2})", parsed.fragment)
+                    if m:
+                        date_val = m.group(1)
+
+            showtimes.append({"date": date_val, "time": time_val, "text": s.get_text(" ", strip=True)})
+
+        # dédupliquer
+        unique = []
+        seen = set()
+        for st in showtimes:
+            key = f"{st.get('date')}_{st.get('time')}"
+            if key not in seen:
+                unique.append(st)
+                seen.add(key)
+
+        return {"found": True, "film": film_title, "count": len(unique), "showtimes": unique, "source_url": page_url}
+
+    if args.film:
+        print(f"Extraction des séances pour le film demandé: '{args.film}'")
+        try:
+            showtimes_data = parse_cinema_showtimes(soup, args.film, url)
+        except Exception as exc:
+            showtimes_data = {"found": False, "error": str(exc), "film": args.film}
+
+        # écrire les résultats dans un fichier dédié (nouvelle convention de nommage)
+        safe_film = sanitize_for_filename(args.film)
+        # Nom selon votre convention: {title}_data_by_{salle}_by_allocine.json
+        film_json_name = f"{safe_film}_data_by_{safe_salle}_by_allocine.json"
+        st_path = run_dir / film_json_name
+        # pour simplifier l'usage côté viewer, ne conserver que la valeur 'time'
+        try:
+            times_only = []
+            for s in showtimes_data.get('showtimes', []) or []:
+                if isinstance(s, dict):
+                    t = s.get('time') or s.get('text') or None
+                    if t:
+                        times_only.append(t)
+                elif isinstance(s, str):
+                    times_only.append(s)
+            # remplacer la structure showtimes par une liste de times (strings)
+            showtimes_data['showtimes'] = times_only
+            showtimes_data['count'] = len(times_only)
+        except Exception:
+            # si transformation échoue, écrire la donnée brute
+            pass
+
+        st_path.write_text(json.dumps(showtimes_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Résultats séances écrits dans: {st_path.resolve()}")
 
     # --- Extraction des fiches films listées sur la page (AlloCiné) ---
     # Helper: extraction d'une carte film
@@ -248,7 +487,7 @@ def main():
                 films.append(extract_film_card(card, base_url))
 
     if films:
-        all_json_path = output_path.with_name(output_path.stem + "_all.json")
+        all_json_path = run_dir / page_json_filename.replace('.json', '_all.json')
         all_data = {
             "url": url,
             "fetched_at": datetime.utcnow().isoformat() + "Z",

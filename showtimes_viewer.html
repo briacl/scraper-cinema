@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Showtimes - Viewer</title>
+</head>
+<body>
+<pre id="out">Chargement des horaires…</pre>
+
+<script>
+// Viewer amélioré :
+// - Si ?file= est fourni, charge ce fichier (chemin relatif/absolu côté serveur).
+// - Sinon, cherche le dernier sous-dossier horodaté dans `searching_film_data/`
+//   et charge `{film}_data_by_{salle}_by_allocine.json` construit depuis ?film= et ?salle=.
+
+function getParam(name){
+  return new URLSearchParams(window.location.search).get(name);
+}
+
+function sanitizeForFilename(s){
+  if(!s) return 'unknown';
+  return s.replace(/[^0-9A-Za-z\-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+}
+
+async function fetchText(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
+  return r.text();
+}
+
+async function findLatestRunDir(){
+  // Récupère l'index de searching_film_data/ et choisit le dossier horodaté le plus récent.
+  const base = 'searching_film_data/';
+  try{
+    const html = await fetchText(base);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const anchors = Array.from(doc.querySelectorAll('a'));
+    // Filtrer les dossiers au format ISO utilisé: YYYY-MM-DDTHH-MM-SS/
+    const re = /^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})\/?$/;
+    const dirs = anchors.map(a => a.getAttribute('href')).filter(h => h && re.test(h)).map(h => h.replace(/\/$/, ''));
+    if(!dirs.length) throw new Error('Aucun dossier horodaté trouvé dans ' + base);
+    // lexicographic max correspond à dernier timestamp
+    dirs.sort();
+    const latest = dirs[dirs.length - 1];
+    return base + latest + '/';
+  }catch(err){
+    // Si l'index HTML n'est pas disponible (p.ex. serveur sans listing),
+    // tenter de lire un fichier `latest_run.txt` créé par le scraper.
+    try{
+      const txt = await fetchText(base + 'latest_run.txt');
+      const candidate = txt.trim();
+      const re2 = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/;
+      if(re2.test(candidate)){
+        return base + candidate + '/';
+      }
+      throw new Error('Contenu invalide dans latest_run.txt: ' + candidate);
+    }catch(err2){
+      throw new Error('Impossible de lister le dossier searching_film_data/: ' + err.message + ' | fallback failed: ' + err2.message);
+    }
+  }
+}
+
+async function loadAndShow(url){
+  const out = document.getElementById('out');
+  try{
+    const resp = await fetch(url);
+    if(!resp.ok) throw new Error('HTTP ' + resp.status + ' for ' + url);
+    const data = await resp.json();
+    if(!data){ out.textContent = 'Fichier JSON vide ou invalide.'; return; }
+
+    const lines = [];
+    lines.push('Film: ' + (data.film || data.title || '-'));
+    lines.push('Trouvé: ' + (data.found ? 'oui' : 'non'));
+    if(data.count !== undefined) lines.push('Nombre d\'horaires: ' + data.count);
+    if(data.source_url) lines.push('Source: ' + data.source_url);
+    lines.push('');
+
+    if(data.found && Array.isArray(data.showtimes) && data.showtimes.length){
+      for(const s of data.showtimes){
+        // supporte maintenant deux formats :
+        // - ancien format: objet {date, time, text}
+        // - nouveau format: simple string représentant l'heure
+        if(typeof s === 'string'){
+          lines.push(`-  ${s}`);
+        }else if(s && typeof s === 'object'){
+          const d = s.date || '-';
+          const t = s.time || s.text || '-';
+          const txt = (s.text || '').replace(/\s+/g, ' ').trim();
+          lines.push(`${d}  ${t}  ${txt}`);
+        }else{
+          lines.push(String(s));
+        }
+      }
+    } else {
+      if(data.reason) lines.push('Raison: ' + data.reason);
+      if(data.error) lines.push('Erreur: ' + data.error);
+      if(!data.found) lines.push('Aucun horaire trouvé pour ce film sur cette page.');
+    }
+
+    out.textContent = lines.join('\n');
+  }catch(err){
+    out.textContent = 'Erreur chargement: ' + err;
+  }
+}
+
+(async function(){
+  const out = document.getElementById('out');
+  const fileParam = getParam('file');
+  if(fileParam){
+    await loadAndShow(fileParam);
+    return;
+  }
+
+  try{
+    const runDir = await findLatestRunDir();
+    // lister les fichiers du run
+    const listing = await fetchText(runDir);
+    const doc = new DOMParser().parseFromString(listing, 'text/html');
+    const anchors = Array.from(doc.querySelectorAll('a'));
+    // filtres: fichiers JSON qui suivent la convention *_data_by_*_by_allocine.json
+    const reFile = /_data_by_.*_by_allocine\.json$/i;
+    // construire des entrées {href, name} où name est le nom de fichier (dernier segment)
+    const fileEntries = anchors.map(a => {
+      const h = a.getAttribute('href');
+      if(!h) return null;
+      const parts = h.split('/').filter(Boolean);
+      const name = parts.length ? parts[parts.length - 1] : h;
+      return {href: h, name};
+    }).filter(e => e && e.name && e.name.endsWith('.json') && reFile.test(e.name));
+
+    const baseUrlForRun = window.location.origin + '/' + runDir;
+
+    // si film + salle fournis en query, tenter le nom exact
+    const filmParam = getParam('film');
+    const salleParam = getParam('salle');
+    if(filmParam && salleParam){
+      const want = `${sanitizeForFilename(filmParam)}_data_by_${sanitizeForFilename(salleParam)}_by_allocine.json`;
+      const foundEntry = fileEntries.find(e => e.name === want);
+      if(foundEntry){
+        const url = new URL(foundEntry.href, baseUrlForRun).href;
+        await loadAndShow(url);
+        return;
+      }
+    }
+
+    if(fileEntries.length === 0){
+      out.textContent = 'Aucun fichier film trouvé dans le dernier run: ' + runDir;
+      return;
+    }
+
+    // choisir le dernier fichier par tri lexicographique sur le nom
+    fileEntries.sort((a,b)=> a.name.localeCompare(b.name));
+    const chosenEntry = fileEntries[fileEntries.length - 1];
+    out.textContent = 'Aucun paramètre fourni — affichage du dernier film produit: ' + chosenEntry.name;
+    const url = new URL(chosenEntry.href, baseUrlForRun).href;
+    await loadAndShow(url);
+  }catch(err){
+    out.textContent = 'Erreur: ' + err.message + '\n\nUtilisez ?file=... ou ?film=...&salle=... si besoin.';
+  }
+
+})();
+</script>
+
+</body>
+</html>

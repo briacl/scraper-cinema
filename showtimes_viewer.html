@@ -3,9 +3,37 @@
 <head>
   <meta charset="utf-8">
   <title>Showtimes - Viewer</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:12px;background:#f7f7f9;color:#222}
+    .top{display:flex;align-items:center;justify-content:space-between}
+    .meta{color:#555;font-size:0.95rem}
+    .films{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+    .card{background:#fff;border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);width:360px}
+    /* Poster: use height:auto and object-fit:contain to avoid cropping the image */
+    .poster{width:100%;height:auto;object-fit:contain;border-radius:6px;display:block}
+    .title{font-weight:600;margin:8px 0}
+    .tags{margin:6px 0;color:#666;font-size:0.9rem}
+    .synopsis{font-size:0.9rem;color:#333;margin:8px 0}
+    .times{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+    .time{background:#e6f0ff;border:1px solid #cfe0ff;padding:6px 8px;border-radius:6px;font-weight:600;color:#0366d6}
+    pre#out{display:none}
+  </style>
 </head>
 <body>
 <pre id="out">Chargement des horaires…</pre>
+<div id="app"></div>
+<div style="margin-top:12px;padding:8px;background:#fff;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.04);width:720px">
+  <label for="salle_url">URL salle:</label>
+  <input id="salle_url" type="text" style="width:60%" placeholder="https://www.allocine.fr/seance/salle_gen_csalle=W0730.html#shwt_date=YYYY-MM-DD">
+  <label for="salle_name" style="margin-left:8px">Nom salle:</label>
+  <input id="salle_name" type="text" style="width:20%" placeholder="Le Prévert de Harnes">
+  <div style="margin-top:8px">
+    <label for="film_name">Film à rechercher:</label>
+    <input id="film_name" type="text" style="width:50%" placeholder="Kaamelott">
+    <button id="search_btn">Lancer recherche</button>
+    <span id="search_status" style="margin-left:8px;color:#555"></span>
+  </div>
+</div>
 
 <script>
 // Viewer amélioré :
@@ -62,53 +90,219 @@ async function findLatestRunDir(){
 
 async function loadAndShow(url){
   const out = document.getElementById('out');
+  const app = document.getElementById('app');
+  // réinitialiser l'UI: par défaut montrer le texte et cacher la vue riche
+  app.innerHTML = '';
+  app.style.display = 'none';
+  out.style.display = 'block';
   try{
     const resp = await fetch(url);
     if(!resp.ok) throw new Error('HTTP ' + resp.status + ' for ' + url);
     const data = await resp.json();
     if(!data){ out.textContent = 'Fichier JSON vide ou invalide.'; return; }
-
-    const lines = [];
-    lines.push('Film: ' + (data.film || data.title || '-'));
-    lines.push('Trouvé: ' + (data.found ? 'oui' : 'non'));
-    if(data.count !== undefined) lines.push('Nombre d\'horaires: ' + data.count);
-    if(data.source_url) lines.push('Source: ' + data.source_url);
-    lines.push('');
-
-    if(data.found && Array.isArray(data.showtimes) && data.showtimes.length){
-      for(const s of data.showtimes){
-        // supporte maintenant deux formats :
-        // - ancien format: objet {date, time, text}
-        // - nouveau format: simple string représentant l'heure
-        if(typeof s === 'string'){
-          lines.push(`-  ${s}`);
-        }else if(s && typeof s === 'object'){
-          const d = s.date || '-';
-          const t = s.time || s.text || '-';
-          const txt = (s.text || '').replace(/\s+/g, ' ').trim();
-          lines.push(`${d}  ${t}  ${txt}`);
-        }else{
-          lines.push(String(s));
-        }
+    // Si c'est un JSON de page structuré avec `seances.films`, rendre une UI riche
+    if(data.seances && Array.isArray(data.seances.films)){
+      app.innerHTML = '';
+      const hdr = data.header && data.header.raw ? `<div class="meta">${escapeHtml(String(data.header.raw).slice(0,400))}...</div>` : '';
+      const meta = data.meta ? `<div class="meta">Source: ${escapeHtml(data.meta.url || data.meta.source || '')} — Fetched: ${escapeHtml(data.meta.fetched_at || '')}</div>` : '';
+      const top = `<div class="top"><div><h1>Horaires — ${escapeHtml(data.meta && data.meta.html_file ? data.meta.html_file.replace(/_/g,' ') : '')}</h1>${hdr}${meta}</div></div>`;
+      app.insertAdjacentHTML('beforeend', top);
+      const container = document.createElement('div'); container.className = 'films';
+      for(const f of data.seances.films){
+        const poster = f.poster ? `<img class="poster" src="${escapeHtml(f.poster)}" alt="${escapeHtml(f.title || '')}"/>` : '';
+        const title = `<div class="title">${escapeHtml(f.title || '—')}</div>`;
+        const tags = `<div class="tags">${escapeHtml([f.release_date, (f.duration||''), (f.genres||[]).join(', ')].filter(Boolean).join(' • '))}</div>`;
+        const synopsis = f.synopsis ? `<div class="synopsis">${escapeHtml(f.synopsis)}</div>` : '';
+        const times = Array.isArray(f.showtimes) && f.showtimes.length ? f.showtimes.map(t=>`<span class="time">${escapeHtml(t)}</span>`).join('') : '<em>Aucun horaire trouvé</em>';
+        const timesBlock = `<div class="times">${times}</div>`;
+        const card = `<div class="card">${poster}${title}${tags}${synopsis}${timesBlock}</div>`;
+        container.insertAdjacentHTML('beforeend', card);
       }
-    } else {
-      if(data.reason) lines.push('Raison: ' + data.reason);
-      if(data.error) lines.push('Erreur: ' + data.error);
-      if(!data.found) lines.push('Aucun horaire trouvé pour ce film sur cette page.');
+      app.appendChild(container);
+      out.style.display = 'none';
+      return;
     }
 
-    out.textContent = lines.join('\n');
+    // Sinon afficher le JSON film-level complet via la fonction globale
+    try{
+      renderFilmData(data);
+      return;
+    }catch(e){
+      out.textContent = 'Erreur affichage film-level JSON: ' + e.message;
+    }
   }catch(err){
     out.textContent = 'Erreur chargement: ' + err;
   }
 }
 
-(async function(){
+function escapeHtml(s){
+  return String(s).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+// Fonction globale pour rendre un objet JSON de film dans l'UI
+function renderFilmData(data){
+  const app = document.getElementById('app');
   const out = document.getElementById('out');
+  app.style.display = 'block';
+  out.style.display = 'none';
+  app.innerHTML = '';
+  const filmCard = document.createElement('div');
+  filmCard.className = 'card';
+  const posterHtml = data.poster ? `<img class="poster" src="${escapeHtml(data.poster)}" alt="poster">` : '';
+  const titleHtml = `<div class="title" style="font-size:1.2rem;margin-top:8px">${escapeHtml(data.film || data.title || '—')}</div>`;
+  const lines = [];
+  if(data.count !== undefined) lines.push(`<div><strong>Horaires (count):</strong> ${escapeHtml(String(data.count))}</div>`);
+  if(data.release_date) lines.push(`<div><strong>Sortie:</strong> ${escapeHtml(data.release_date)}</div>`);
+  if(data.duration) lines.push(`<div><strong>Durée:</strong> ${escapeHtml(data.duration)}</div>`);
+  if(data.genres && data.genres.length) lines.push(`<div><strong>Genres:</strong> ${escapeHtml((data.genres||[]).join(', '))}</div>`);
+  if(data.director) lines.push(`<div><strong>Réalisateur:</strong> ${escapeHtml(data.director)}</div>`);
+  if(data.actors && data.actors.length) lines.push(`<div><strong>Acteurs:</strong> ${escapeHtml((data.actors||[]).join(', '))}</div>`);
+  if(data.ratings && Object.keys(data.ratings||{}).length) lines.push(`<div><strong>Notes:</strong> ${escapeHtml(Object.entries(data.ratings).map(([k,v])=>`${k}: ${v}`).join(' — '))}</div>`);
+  if(data.synopsis) lines.push(`<div class="synopsis">${escapeHtml(data.synopsis)}</div>`);
+  if(Array.isArray(data.showtimes) && data.showtimes.length){
+    lines.push(`<div><strong>Horaires listés:</strong></div>`);
+    const timesHtml = data.showtimes.map(t=>`<span class="time">${escapeHtml(t)}</span>`).join(' ');
+    lines.push(`<div class="times" style="margin-top:8px">${timesHtml}</div>`);
+  }else{
+    lines.push(`<div><em>Aucun horaire</em></div>`);
+  }
+  if(data.link) lines.push(`<div><a href="${escapeHtml(data.link)}" target="_blank">Fiche film</a></div>`);
+  if(data.source_url) lines.push(`<div><a href="${escapeHtml(data.source_url)}" target="_blank">Page séance</a></div>`);
+  if(data.fetched_at) lines.push(`<div style="color:#666;font-size:0.9rem">Récupéré: ${escapeHtml(data.fetched_at)}</div>`);
+  // helper: format any value (primitive, array, object) as HTML
+  function formatValue(v){
+    if(v === null || v === undefined) return `<span style="color:#666">${escapeHtml(String(v))}</span>`;
+    if(typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return escapeHtml(String(v));
+    if(Array.isArray(v)){
+      if(v.length === 0) return '<em>[]</em>';
+      return '<ul style="margin:6px 0 6px 14px;padding:0;list-style:disc">' + v.map(x=>`<li>${formatValue(x)}</li>`).join('') + '</ul>';
+    }
+    // object
+    const entries = Object.entries(v);
+    if(entries.length === 0) return '<em>{}</em>';
+    return '<div style="margin:6px 0;padding:6px;border-left:3px solid #eee;background:#fafafa;border-radius:4px">' + entries.map(([k,val])=>`<div><strong>${escapeHtml(k)}:</strong> ${formatValue(val)}</div>`).join('') + '</div>';
+  }
+
+  // Render known lines first: poster on top, then title + metadata below
+  filmCard.innerHTML = `${posterHtml}<div style="padding-top:8px">${titleHtml}${lines.join('')}</div>`;
+
+  // Render any extra fields that were not shown above
+  const shown = new Set(['poster','film','title','count','release_date','duration','genres','director','actors','ratings','synopsis','showtimes','link','source_url','fetched_at']);
+  const extraKeys = Object.keys(data).filter(k=>!shown.has(k));
+  if(extraKeys.length){
+    const extrasDiv = document.createElement('div');
+    extrasDiv.style.marginTop = '10px';
+    extrasDiv.innerHTML = `<div style="font-weight:600;margin-bottom:6px">Autres propriétés</div>` + extraKeys.map(k=>`<div style="margin-bottom:6px"><strong>${escapeHtml(k)}:</strong> ${formatValue(data[k])}</div>`).join('');
+    filmCard.appendChild(extrasDiv);
+  }
+
+  app.appendChild(filmCard);
+}
+
+ (async function(){
+  const out = document.getElementById('out');
+  const app = document.getElementById('app');
   const fileParam = getParam('file');
   if(fileParam){
     await loadAndShow(fileParam);
     return;
+  }
+
+  // installer handler pour le bouton de recherche
+  document.getElementById('search_btn').addEventListener('click', async function(){
+    const url = document.getElementById('salle_url').value.trim();
+    const film = document.getElementById('film_name').value.trim();
+    const salle = document.getElementById('salle_name').value.trim();
+    const status = document.getElementById('search_status');
+    if(!url || !film){ status.textContent = 'URL salle et nom du film requis'; return; }
+    status.textContent = 'Recherche en cours...';
+    try{
+      const q = new URLSearchParams({url, film});
+      if(salle) q.set('salle_name', salle);
+      const resp = await fetch('/api/scrape?' + q.toString());
+      const text = await resp.text(); // read body ONCE
+
+      if(!resp.ok){
+        // essayer de parser JSON depuis le texte
+        try{
+          const err = JSON.parse(text);
+          status.textContent = 'Erreur: ' + (err.error || JSON.stringify(err));
+        }catch(_){
+          status.textContent = 'Erreur HTTP ' + resp.status + ': ' + text.slice(0,200);
+        }
+        return;
+      }
+
+      // resp ok: essayer d'interpréter comme JSON, sinon afficher texte brut
+      try{
+            let data = JSON.parse(text);
+            // tenter d'enrichir depuis le JSON de page produit dans le même run
+            try{
+              data = await enrichWithPageData(data);
+            }catch(_){
+              // fallback: on affiche ce qu'on a
+            }
+            renderFilmData(data);
+        status.textContent = 'Terminé';
+      }catch(_){
+        status.textContent = 'Réponse non-JSON reçue (voir ci-dessous)';
+        app.style.display = 'block';
+        out.style.display = 'none';
+        app.innerHTML = `<div class="card"><div class="title">Réponse brute</div><pre style="white-space:pre-wrap;max-height:400px;overflow:auto">${escapeHtml(text)}</pre></div>`;
+      }
+    }catch(e){
+      status.textContent = 'Erreur: ' + e.message;
+    }
+  });
+
+  // Enrichir un film-level JSON avec les métadonnées trouvées dans le page-level JSON
+  async function enrichWithPageData(filmData){
+    // si on a déjà poster/director/actors, rien à faire
+    const wantKeys = ['poster','director','actors','synopsis','release_date','duration','genres','ratings','link'];
+    const missing = wantKeys.some(k => !(k in filmData));
+    if(!missing) return filmData;
+
+    const runDir = await findLatestRunDir();
+    // lister fichiers du run
+    const listing = await fetchText(runDir);
+    const doc = new DOMParser().parseFromString(listing, 'text/html');
+    const anchors = Array.from(doc.querySelectorAll('a'));
+    // chercher un fichier page-level (allocine_*_all_seances_*.json OR *_all.json)
+    const pageCandidates = anchors.map(a=>a.getAttribute('href')).filter(h=>h && (/_all_seances_.*\.json$/i.test(h) || /_all\.json$/i.test(h)));
+    if(pageCandidates.length === 0) throw new Error('Aucun JSON de page trouvé pour enrichissement');
+    // prendre le premier candidate plausible
+    const pageUrl = new URL(pageCandidates[0], window.location.origin + '/' + runDir).href;
+    const pageText = await fetchText(pageUrl);
+    const pageJson = JSON.parse(pageText);
+    if(!(pageJson.seances && Array.isArray(pageJson.seances.films))) throw new Error('Format page JSON inattendu');
+
+    const films = pageJson.seances.films;
+    const name = (filmData.film || filmData.title || '').toLowerCase();
+    const times = Array.isArray(filmData.showtimes) ? filmData.showtimes : [];
+
+    function scoreMatch(f){
+      const t = (f.title||'').toLowerCase();
+      let score = 0;
+      if(name && (t === name || t.includes(name) || name.includes(t))) score += 10;
+      // matching by times increases confidence
+      if(times.length && Array.isArray(f.showtimes)){
+        for(const tt of times){ if(f.showtimes.includes(tt)) score += 3; }
+      }
+      return score;
+    }
+
+    let best = null; let bestScore = -1;
+    for(const f of films){
+      const s = scoreMatch(f);
+      if(s > bestScore){ bestScore = s; best = f; }
+    }
+    if(!best || bestScore <= 0) throw new Error('Aucun film correspondant trouvé dans le JSON de page');
+
+    // fusionner: garder filmData champs existants, ajouter champs depuis best
+    const merged = Object.assign({}, best, filmData);
+    // ensure canonical keys: film vs title
+    if(!merged.film && merged.title) merged.film = merged.title;
+    return merged;
   }
 
   try{

@@ -1,0 +1,85 @@
+{
+  "header": {
+    "raw": "AlloCiné Ex. : L'odyssée , Deepwater , La Fille Inconnue , Overdrive News Cinéma Meilleurs films Films à l'affiche Prochainement Séances Kids Box Office Courts-métrages DVD Classiques Tous les films Séries Streaming TVActu Trailers VOD Les indés Shopping Canal+ Mon compte Identifiez-vous Créez votre compte Accueil Cinéma Séances et horaires Cinéma Pas-de-Calais Cinéma Le Prévert à Harnes Cinéma Le Prévert 36 Rue de Montceau-les-Mines 62440 Harnes 1 Salle Cartes acceptées : Cinéchèques Films à l'affiche Prochainement Tarifs Plan d'accès"
+  },
+  "seances": {
+    "date": "2025-11-29",
+    "films": [
+      {
+        "title": "Gabby et la maison magique - Le film",
+        "link": "https://www.allocine.fr/film/fichefilm_gen_cfilm=296641.html",
+        "poster": "https://fr.web.img3.acsta.net/c_160_213/img/92/bc/92bc1bd9595b71eba3fefa597aaff4d6.jpg",
+        "release_date": "8 octobre 2025",
+        "duration": null,
+        "genres": [
+          "Animation",
+          "Aventure",
+          "Comédie"
+        ],
+        "director": "Ryan Crego",
+        "actors": [
+          "Laila Lockhart Kraner",
+          "Lior Chabbat",
+          "Kristen Wiig"
+        ],
+        "synopsis": "Gabby part pour une virée en voiture avec sa grand-mère Gigi vers la ville imaginaire de Chat Francisco. Mais lorsque sa précieuse maison de poupée tombe entre les mains de Véra, une femme excentrique dangereusement obsédée par les chats, Gabby va partir à l’aventure, cette fois dans le monde réel, afin de récupérer ses Gabby Chats et ...",
+        "sessions": null,
+        "ratings": {
+          "Presse": "2,0",
+          "Spectateurs": "2,6"
+        },
+        "showtimes": []
+      },
+      {
+        "title": "Chaylla",
+        "link": "https://www.allocine.fr/film/fichefilm_gen_cfilm=312459.html",
+        "poster": "https://fr.web.img5.acsta.net/c_160_213/img/13/09/130959e2140be9224f93f3791635ef9c.jpg",
+        "release_date": null,
+        "duration": null,
+        "genres": [
+          "Documentaire"
+        ],
+        "director": "Paul Pirritano",
+        "actors": [],
+        "synopsis": "La vie n’a pas été clémente pour Chaylla Rebahia. Née à Roubaix, mère au foyer d’un jeune fils atteint de mucoviscidose, Chaylla subit la colère de son mari devenu violent et alcoolique. Pourtant, Chaylla fait face. Sa détermination n’a d’égale que sa dignité.",
+        "sessions": null,
+        "ratings": {
+          "Spectateurs": "3,1"
+        },
+        "showtimes": []
+      },
+      {
+        "title": "Kaamelott – Deuxième Volet [partie 1]",
+        "link": "https://www.allocine.fr/film/fichefilm_gen_cfilm=303027.html",
+        "poster": "https://fr.web.img5.acsta.net/c_160_213/img/d9/8c/d98cf2f82174e030b461d6a7103c58ec.jpg",
+        "release_date": "22 octobre 2025",
+        "duration": null,
+        "genres": [
+          "Aventure",
+          "Comédie",
+          "Historique"
+        ],
+        "director": "Alexandre Astier",
+        "actors": [
+          "Alexandre Astier",
+          "Anne Girouard",
+          "Jean-Christophe Hembert"
+        ],
+        "synopsis": "Les Dieux sont en colère contre Arthur ! Après la destruction de Kaamelott, son refus obstiné de tuer Lancelot précipite le Royaume de Logres à sa perte. Il réunit ses Chevaliers, novices téméraires et vétérans désabusés, autour de la Nouvelle Table Ronde et les envoie prouver leur valeur aux quatre coins du Monde, des Marais ...",
+        "sessions": null,
+        "ratings": {
+          "Presse": "2,3",
+          "Spectateurs": "3,1"
+        },
+        "showtimes": [
+          "21:00"
+        ]
+      }
+    ]
+  },
+  "meta": {
+    "url": "https://www.allocine.fr/seance/salle_gen_csalle=W0730.html#shwt_date=2025-11-29",
+    "fetched_at": "2025-11-29T15:33:10.005049Z",
+    "html_file": "allocine_Le_Pr_vert_de_Harnes_all_seances_2025-11-29.html"
+  }
+}

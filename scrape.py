@@ -210,19 +210,9 @@ def main():
             if text and text not in showtimes:
                 showtimes.append(text)
 
-    # Préparer l'objet JSON
-    json_data = {
-        "url": url,
-        "fetched_at": datetime.utcnow().isoformat() + "Z",
-        "title": title,
-        "synopsis": synopsis,
-        "showtimes": showtimes,
-        "html_file": str(output_path.name),
-    }
-
+    # NOTE: page-level JSON will be construit plus bas après l'extraction
+    # des cartes films et de leurs séances, pour préserver l'ordre d'affichage.
     output_json = run_dir / page_json_filename
-    output_json.write_text(json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Données extraites (page-level) sauvegardées dans: {output_json.resolve()}")
 
     # Si l'utilisateur a demandé l'extraction des séances pour un film précis
     def normalize_text(s: str) -> str:
@@ -496,6 +486,50 @@ def main():
         }
         all_json_path.write_text(json.dumps(all_data, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"Liste complète ({len(films)}) sauvegardée dans: {all_json_path.resolve()}")
+
+        # Pour chaque film, joindre la liste des horaires (sous forme de chaînes HH:MM)
+        for f in films:
+            try:
+                title = f.get('title')
+                if not title:
+                    f['showtimes'] = []
+                    continue
+                st = parse_cinema_showtimes(soup, title, url)
+                times = []
+                for s in st.get('showtimes', []) or []:
+                    if isinstance(s, dict):
+                        t = s.get('time') or s.get('text')
+                        if t:
+                            times.append(t)
+                    elif isinstance(s, str):
+                        times.append(s)
+                f['showtimes'] = times
+            except Exception:
+                f['showtimes'] = []
+
+        # Construire le JSON de page avec ordre préservé: header, seances, meta
+        # Extraire un bloc header minimal (texte brut des nav / header si présent)
+        header_raw = None
+        try:
+            hdr = soup.find(lambda tag: tag.name in ('header', 'nav') or (tag.get('id') and 'header' in tag.get('id').lower()))
+            if hdr:
+                header_raw = hdr.get_text(" ", strip=True)
+            else:
+                # fallback: prendre le premier gros texte présent en haut de page
+                top = soup.find(True)
+                header_raw = top.get_text(" ", strip=True) if top else None
+        except Exception:
+            header_raw = None
+
+        page_struct = {
+            "header": {"raw": header_raw},
+            "seances": {"date": seance_date, "films": films},
+            "meta": {"url": url, "fetched_at": datetime.utcnow().isoformat() + "Z", "html_file": str(output_path.name)},
+        }
+
+        # écrire le page-level JSON structuré
+        output_json.write_text(json.dumps(page_struct, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Données extraites (page-structured) sauvegardées dans: {output_json.resolve()}")
 
 
 if __name__ == "__main__":

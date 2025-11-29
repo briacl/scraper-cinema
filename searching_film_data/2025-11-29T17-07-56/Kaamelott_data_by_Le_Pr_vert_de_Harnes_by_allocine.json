@@ -1,0 +1,31 @@
+{
+  "found": true,
+  "film": "Kaamelott – Deuxième Volet [partie 1]",
+  "count": 1,
+  "showtimes": [
+    "21:00"
+  ],
+  "link": "https://www.allocine.fr/film/fichefilm_gen_cfilm=303027.html",
+  "poster": "https://fr.web.img5.acsta.net/c_160_213/img/d9/8c/d98cf2f82174e030b461d6a7103c58ec.jpg",
+  "release_date": "22 octobre 2025",
+  "duration": null,
+  "genres": [
+    "Aventure",
+    "Comédie",
+    "Historique"
+  ],
+  "director": "Alexandre Astier",
+  "actors": [
+    "Alexandre Astier",
+    "Anne Girouard",
+    "Jean-Christophe Hembert"
+  ],
+  "synopsis": "Les Dieux sont en colère contre Arthur ! Après la destruction de Kaamelott, son refus obstiné de tuer Lancelot précipite le Royaume de Logres à sa perte. Il réunit ses Chevaliers, novices téméraires et vétérans désabusés, autour de la Nouvelle Table Ronde et les envoie prouver leur valeur aux quatre coins du Monde, des Marais ...",
+  "sessions": null,
+  "ratings": {
+    "Presse": "2,3",
+    "Spectateurs": "3,1"
+  },
+  "source_url": "https://www.allocine.fr/seance/salle_gen_csalle=W0730.html#shwt_date=2025-11-29",
+  "fetched_at": "2025-11-29T16:07:57.833560Z"
+}
